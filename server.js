@@ -20,7 +20,7 @@ connectDB();
 // Middleware
 app.use(helmet()); // Security headers
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: [process.env.FRONTEND_URL || 'http://localhost:5173', 'https://mindcare-nu-five.vercel.app'],
   credentials: true
 }));
 app.use(express.json());
