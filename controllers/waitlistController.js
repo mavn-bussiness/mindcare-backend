@@ -23,6 +23,8 @@ export const addToWaitlist = async (req, res) => {
     const ipAddress = req.ip || req.connection.remoteAddress;
     const userAgent = req.get('user-agent');
 
+    console.log(`📝 Waitlist signup attempt: ${email}`);
+
     // Check if email already exists
     const existingEntry = await Waitlist.findOne({ email });
     
@@ -33,6 +35,14 @@ export const addToWaitlist = async (req, res) => {
         existingEntry.confirmedAt = null;
         await existingEntry.save();
         
+        // Try to send welcome email for reactivation
+        try {
+          const emailResult = await sendWelcomeEmail(email);
+          console.log('✅ Reactivation email sent:', emailResult);
+        } catch (emailError) {
+          console.error('❌ Failed to send reactivation email:', emailError.message);
+        }
+        
         return res.status(200).json({
           success: true,
           message: 'Welcome back! You\'ve been added to the waitlist again.',
@@ -40,6 +50,7 @@ export const addToWaitlist = async (req, res) => {
         });
       }
       
+      console.log(`ℹ️ Email already exists in waitlist: ${email}`);
       return res.status(200).json({
         success: true,
         message: 'You\'re already on the waitlist!',
@@ -53,29 +64,62 @@ export const addToWaitlist = async (req, res) => {
       ipAddress,
       userAgent,
       referralSource,
-      status: 'confirmed', // Auto-confirm for simplicity, or use 'pending' with email verification
+      status: 'confirmed', // Auto-confirm for simplicity
       confirmedAt: new Date()
     });
 
+    console.log(`✅ Waitlist entry created: ${email}`);
+
     // Send welcome email
+    let emailSent = false;
+    let emailError = null;
+    
     try {
-      await sendWelcomeEmail(email);
-    } catch (emailError) {
-      console.error('Failed to send welcome email:', emailError);
-      // Don't fail the request if email fails
+      const emailResult = await sendWelcomeEmail(email);
+      emailSent = true;
+      console.log('✅ Welcome email sent successfully:', emailResult);
+    } catch (error) {
+      emailError = error.message;
+      console.error('❌ Failed to send welcome email:', {
+        email,
+        error: error.message,
+        code: error.code,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
     }
 
-    res.status(201).json({
-      success: true,
-      message: 'Successfully added to waitlist! Check your email for confirmation.',
-      data: { 
-        email: waitlistEntry.email,
-        position: await Waitlist.countDocuments({ createdAt: { $lte: waitlistEntry.createdAt } })
-      }
+    // Get user's position in waitlist
+    const position = await Waitlist.countDocuments({ 
+      createdAt: { $lte: waitlistEntry.createdAt },
+      status: { $ne: 'unsubscribed' }
     });
 
+    // Return success even if email fails
+    const response = {
+      success: true,
+      message: emailSent 
+        ? 'Successfully added to waitlist! Check your email for confirmation.'
+        : 'Successfully added to waitlist! (Email notification may be delayed)',
+      data: { 
+        email: waitlistEntry.email,
+        position,
+        emailSent
+      }
+    };
+
+    // Add warning if email failed
+    if (!emailSent && process.env.NODE_ENV === 'development') {
+      response.warning = `Email could not be sent: ${emailError}`;
+    }
+
+    res.status(201).json(response);
+
   } catch (error) {
-    console.error('Error adding to waitlist:', error);
+    console.error('❌ Error adding to waitlist:', {
+      message: error.message,
+      stack: error.stack
+    });
+    
     res.status(500).json({
       success: false,
       message: 'Failed to join waitlist. Please try again.',
