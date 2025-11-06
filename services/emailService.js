@@ -18,22 +18,29 @@ const createTransporter = () => {
     secure: process.env.EMAIL_PORT === '465'
   });
 
-  return nodemailer.createTransporter({
-    host: process.env.EMAIL_HOST,
-    port: parseInt(process.env.EMAIL_PORT),
-    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
-    auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASSWORD,
-    },
-    // Add timeout settings
-    connectionTimeout: 10000, // 10 seconds
-    greetingTimeout: 10000,
-    socketTimeout: 10000,
-    // Enable debug output
-    debug: process.env.NODE_ENV === 'development',
-    logger: process.env.NODE_ENV === 'development'
-  });
+  try {
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST,
+      port: parseInt(process.env.EMAIL_PORT),
+      secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD,
+      },
+      // Add timeout settings
+      connectionTimeout: 10000, // 10 seconds
+      greetingTimeout: 10000,
+      socketTimeout: 10000,
+      // Enable debug output
+      debug: process.env.NODE_ENV === 'development',
+      logger: process.env.NODE_ENV === 'development'
+    });
+    
+    return transporter;
+  } catch (error) {
+    console.error('❌ Error creating transporter:', error);
+    throw error;
+  }
 };
 
 // Test email connection
@@ -49,7 +56,7 @@ export const testEmailConnection = async () => {
   }
 };
 
-// Welcome email template (unchanged)
+// Welcome email template
 const getWelcomeEmailHTML = (email) => {
   return `
     <!DOCTYPE html>
