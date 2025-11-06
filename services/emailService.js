@@ -7,8 +7,8 @@ const createTransporter = () => {
   const missingVars = requiredVars.filter(v => !process.env[v]);
   
   if (missingVars.length > 0) {
-    console.error('❌ Missing email configuration:', missingVars.join(', '));
-    throw new Error(`Missing email configuration: ${missingVars.join(', ')}`);
+    console.warn('⚠️  Missing email configuration:', missingVars.join(', '));
+    return null; // Return null instead of throwing
   }
 
   console.log('📧 Email Configuration:', {
@@ -39,7 +39,7 @@ const createTransporter = () => {
     return transporter;
   } catch (error) {
     console.error('❌ Error creating transporter:', error);
-    throw error;
+    return null; // Return null instead of throwing
   }
 };
 
@@ -47,6 +47,14 @@ const createTransporter = () => {
 export const testEmailConnection = async () => {
   try {
     const transporter = createTransporter();
+    
+    if (!transporter) {
+      return { 
+        success: false, 
+        error: 'Email not configured - missing environment variables (EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASSWORD)' 
+      };
+    }
+    
     await transporter.verify();
     console.log('✅ Email server connection verified');
     return { success: true, message: 'Email server is ready' };
@@ -240,6 +248,15 @@ export const sendWelcomeEmail = async (email) => {
     
     const transporter = createTransporter();
     
+    if (!transporter) {
+      console.warn('⚠️  Email not configured, skipping welcome email');
+      return { 
+        success: false, 
+        error: 'Email not configured',
+        skipped: true 
+      };
+    }
+    
     const mailOptions = {
       from: process.env.EMAIL_FROM || `"MindCare" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -286,10 +303,13 @@ Unsubscribe: ${process.env.FRONTEND_URL || 'https://mindcare-nu-five.vercel.app'
     console.error('❌ Error sending welcome email:', {
       message: error.message,
       code: error.code,
-      command: error.command,
-      stack: error.stack
+      command: error.command
     });
-    throw error;
+    // Don't throw - return error instead
+    return { 
+      success: false, 
+      error: error.message 
+    };
   }
 };
 
@@ -299,6 +319,11 @@ export const sendAdminNotification = async (email) => {
     console.log(`📧 Sending admin notification for: ${email}`);
     
     const transporter = createTransporter();
+    
+    if (!transporter) {
+      console.warn('⚠️  Email not configured, skipping admin notification');
+      return { success: false, error: 'Email not configured', skipped: true };
+    }
     
     const mailOptions = {
       from: process.env.EMAIL_FROM || `"MindCare" <${process.env.EMAIL_USER}>`,
@@ -319,7 +344,6 @@ export const sendAdminNotification = async (email) => {
     
   } catch (error) {
     console.error('❌ Error sending admin notification:', error.message);
-    // Don't throw - admin notification failure shouldn't block signup
     return { success: false, error: error.message };
   }
 };
