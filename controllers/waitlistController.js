@@ -36,11 +36,11 @@ export const addToWaitlist = async (req, res) => {
         await existingEntry.save();
         
         // Try to send welcome email for reactivation
-        try {
-          const emailResult = await sendWelcomeEmail(email);
-          console.log('✅ Reactivation email sent:', emailResult);
-        } catch (emailError) {
-          console.error('❌ Failed to send reactivation email:', emailError.message);
+        const emailResult = await sendWelcomeEmail(email);
+        if (emailResult.success) {
+          console.log('✅ Reactivation email sent');
+        } else if (!emailResult.skipped) {
+          console.warn('⚠️  Failed to send reactivation email:', emailResult.error);
         }
         
         return res.status(200).json({
@@ -50,7 +50,7 @@ export const addToWaitlist = async (req, res) => {
         });
       }
       
-      console.log(`ℹ️ Email already exists in waitlist: ${email}`);
+      console.log(`ℹ️  Email already exists in waitlist: ${email}`);
       return res.status(200).json({
         success: true,
         message: 'You\'re already on the waitlist!',
@@ -70,22 +70,19 @@ export const addToWaitlist = async (req, res) => {
 
     console.log(`✅ Waitlist entry created: ${email}`);
 
-    // Send welcome email
+    // Send welcome email (non-blocking)
     let emailSent = false;
-    let emailError = null;
+    let emailSkipped = false;
     
-    try {
-      const emailResult = await sendWelcomeEmail(email);
+    const emailResult = await sendWelcomeEmail(email);
+    if (emailResult.success) {
       emailSent = true;
-      console.log('✅ Welcome email sent successfully:', emailResult);
-    } catch (error) {
-      emailError = error.message;
-      console.error('❌ Failed to send welcome email:', {
-        email,
-        error: error.message,
-        code: error.code,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      });
+      console.log('✅ Welcome email sent successfully');
+    } else if (emailResult.skipped) {
+      emailSkipped = true;
+      console.warn('⚠️  Email not configured, skipped sending welcome email');
+    } else {
+      console.warn('⚠️  Failed to send welcome email:', emailResult.error);
     }
 
     // Get user's position in waitlist
@@ -99,18 +96,13 @@ export const addToWaitlist = async (req, res) => {
       success: true,
       message: emailSent 
         ? 'Successfully added to waitlist! Check your email for confirmation.'
-        : 'Successfully added to waitlist! (Email notification may be delayed)',
+        : 'Successfully added to waitlist!',
       data: { 
         email: waitlistEntry.email,
         position,
         emailSent
       }
     };
-
-    // Add warning if email failed
-    if (!emailSent && process.env.NODE_ENV === 'development') {
-      response.warning = `Email could not be sent: ${emailError}`;
-    }
 
     res.status(201).json(response);
 
