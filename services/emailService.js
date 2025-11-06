@@ -1,19 +1,55 @@
 import nodemailer from 'nodemailer';
 
-// Create email transporter
+// Create email transporter with better error handling
 const createTransporter = () => {
-  return nodemailer.createTransport({
+  // Validate required environment variables
+  const requiredVars = ['EMAIL_HOST', 'EMAIL_PORT', 'EMAIL_USER', 'EMAIL_PASSWORD'];
+  const missingVars = requiredVars.filter(v => !process.env[v]);
+  
+  if (missingVars.length > 0) {
+    console.error('❌ Missing email configuration:', missingVars.join(', '));
+    throw new Error(`Missing email configuration: ${missingVars.join(', ')}`);
+  }
+
+  console.log('📧 Email Configuration:', {
     host: process.env.EMAIL_HOST,
     port: process.env.EMAIL_PORT,
-    secure: false, // true for 465, false for other ports
+    user: process.env.EMAIL_USER,
+    secure: process.env.EMAIL_PORT === '465'
+  });
+
+  return nodemailer.createTransporter({
+    host: process.env.EMAIL_HOST,
+    port: parseInt(process.env.EMAIL_PORT),
+    secure: process.env.EMAIL_PORT === '465', // true for 465, false for other ports
     auth: {
       user: process.env.EMAIL_USER,
       pass: process.env.EMAIL_PASSWORD,
     },
+    // Add timeout settings
+    connectionTimeout: 10000, // 10 seconds
+    greetingTimeout: 10000,
+    socketTimeout: 10000,
+    // Enable debug output
+    debug: process.env.NODE_ENV === 'development',
+    logger: process.env.NODE_ENV === 'development'
   });
 };
 
-// Welcome email template
+// Test email connection
+export const testEmailConnection = async () => {
+  try {
+    const transporter = createTransporter();
+    await transporter.verify();
+    console.log('✅ Email server connection verified');
+    return { success: true, message: 'Email server is ready' };
+  } catch (error) {
+    console.error('❌ Email server connection failed:', error.message);
+    return { success: false, error: error.message };
+  }
+};
+
+// Welcome email template (unchanged)
 const getWelcomeEmailHTML = (email) => {
   return `
     <!DOCTYPE html>
@@ -168,7 +204,7 @@ const getWelcomeEmailHTML = (email) => {
         </div>
         
         <div style="text-align: center;">
-          <a href="${process.env.FRONTEND_URL || 'https://mindcare.com'}" class="cta-button">
+          <a href="${process.env.FRONTEND_URL || 'https://mindcare-nu-five.vercel.app'}" class="cta-button">
             Learn More About MindCare
           </a>
         </div>
@@ -178,9 +214,9 @@ const getWelcomeEmailHTML = (email) => {
         <p>With care,<br><strong>The MindCare Team</strong></p>
         
         <div class="footer">
-          <p>You're receiving this email because you signed up for the MindCare waitlist at ${process.env.FRONTEND_URL || 'mindcare.com'}</p>
+          <p>You're receiving this email because you signed up for the MindCare waitlist at ${process.env.FRONTEND_URL || 'mindcare-nu-five.vercel.app'}</p>
           <p style="margin-top: 10px;">
-            <a href="${process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #10b981; text-decoration: none;">Unsubscribe</a>
+            <a href="${process.env.FRONTEND_URL || 'https://mindcare-nu-five.vercel.app'}/unsubscribe?email=${encodeURIComponent(email)}" style="color: #10b981; text-decoration: none;">Unsubscribe</a>
           </p>
           <p style="margin-top: 15px;">© 2024 MindCare. All rights reserved.</p>
         </div>
@@ -190,13 +226,15 @@ const getWelcomeEmailHTML = (email) => {
   `;
 };
 
-// Send welcome email
+// Send welcome email with better error handling
 export const sendWelcomeEmail = async (email) => {
   try {
+    console.log(`📧 Attempting to send welcome email to: ${email}`);
+    
     const transporter = createTransporter();
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"MindCare" <noreply@mindcare.com>',
+      from: process.env.EMAIL_FROM || `"MindCare" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: '🎉 Welcome to MindCare - You\'re on the List!',
       html: getWelcomeEmailHTML(email),
@@ -219,16 +257,31 @@ The MindCare Team
 
 ---
 You're receiving this email because you signed up for the MindCare waitlist.
-Unsubscribe: ${process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(email)}
+Unsubscribe: ${process.env.FRONTEND_URL || 'https://mindcare-nu-five.vercel.app'}/unsubscribe?email=${encodeURIComponent(email)}
       `
     };
 
     const info = await transporter.sendMail(mailOptions);
-    console.log('✅ Welcome email sent:', info.messageId);
-    return info;
+    console.log('✅ Welcome email sent successfully:', {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response
+    });
+    
+    return { 
+      success: true, 
+      messageId: info.messageId,
+      accepted: info.accepted 
+    };
     
   } catch (error) {
-    console.error('❌ Error sending welcome email:', error);
+    console.error('❌ Error sending welcome email:', {
+      message: error.message,
+      code: error.code,
+      command: error.command,
+      stack: error.stack
+    });
     throw error;
   }
 };
@@ -236,10 +289,12 @@ Unsubscribe: ${process.env.FRONTEND_URL}/unsubscribe?email=${encodeURIComponent(
 // Send notification to admin
 export const sendAdminNotification = async (email) => {
   try {
+    console.log(`📧 Sending admin notification for: ${email}`);
+    
     const transporter = createTransporter();
     
     const mailOptions = {
-      from: process.env.EMAIL_FROM || '"MindCare" <noreply@mindcare.com>',
+      from: process.env.EMAIL_FROM || `"MindCare" <${process.env.EMAIL_USER}>`,
       to: process.env.ADMIN_EMAIL || process.env.EMAIL_USER,
       subject: '🎊 New Waitlist Signup - MindCare',
       html: `
@@ -250,11 +305,14 @@ export const sendAdminNotification = async (email) => {
       text: `New Waitlist Signup!\n\nEmail: ${email}\nTime: ${new Date().toLocaleString()}`
     };
 
-    await transporter.sendMail(mailOptions);
-    console.log('✅ Admin notification sent');
+    const info = await transporter.sendMail(mailOptions);
+    console.log('✅ Admin notification sent:', info.messageId);
+    
+    return { success: true, messageId: info.messageId };
     
   } catch (error) {
-    console.error('❌ Error sending admin notification:', error);
+    console.error('❌ Error sending admin notification:', error.message);
     // Don't throw - admin notification failure shouldn't block signup
+    return { success: false, error: error.message };
   }
 };
