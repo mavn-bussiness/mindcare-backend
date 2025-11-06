@@ -20,19 +20,25 @@ app.set('trust proxy', 1);
 // Connect to Database
 connectDB();
 
-// Test email connection on startup
+// Test email connection on startup (non-blocking)
 (async () => {
-  console.log('\n📧 Testing email configuration...');
-  const emailTest = await testEmailConnection();
-  if (emailTest.success) {
-    console.log('✅ Email service is ready\n');
-  } else {
-    console.error('❌ Email service is NOT configured properly:', emailTest.error);
-    console.error('⚠️  Please check your environment variables:');
-    console.error('   - EMAIL_HOST');
-    console.error('   - EMAIL_PORT');
-    console.error('   - EMAIL_USER');
-    console.error('   - EMAIL_PASSWORD\n');
+  try {
+    console.log('\n📧 Testing email configuration...');
+    const emailTest = await testEmailConnection();
+    if (emailTest.success) {
+      console.log('✅ Email service is ready\n');
+    } else {
+      console.warn('⚠️  Email service is NOT configured:', emailTest.error);
+      console.warn('⚠️  Server will run but emails will not be sent');
+      console.warn('⚠️  Configure these env variables to enable email:');
+      console.warn('   - EMAIL_HOST');
+      console.warn('   - EMAIL_PORT');
+      console.warn('   - EMAIL_USER');
+      console.warn('   - EMAIL_PASSWORD\n');
+    }
+  } catch (error) {
+    console.warn('⚠️  Email configuration test failed:', error.message);
+    console.warn('⚠️  Server will continue without email functionality\n');
   }
 })();
 
@@ -59,7 +65,7 @@ app.get('/api/health', async (req, res) => {
     timestamp: new Date().toISOString(),
     services: {
       database: 'connected',
-      email: emailStatus.success ? 'connected' : 'error',
+      email: emailStatus.success ? 'connected' : 'not configured',
       emailError: emailStatus.success ? null : emailStatus.error
     },
     environment: {
